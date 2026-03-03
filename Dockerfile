@@ -9,12 +9,15 @@ FROM node:20-alpine
 # Create app directory
 WORKDIR /app
 
-# Install only production dependencies first (better layer caching)
+# Install all dependencies (including dev for build)
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm install
 
 # Copy the rest of the source code
 COPY . .
+
+# Build the application
+RUN npm run build
 
 # Cloud Run requires this environment variable
 ENV PORT=8080
