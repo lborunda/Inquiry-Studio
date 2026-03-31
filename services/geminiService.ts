@@ -1,8 +1,46 @@
 // services/geminiService.ts
+import { GoogleGenAI } from "@google/genai";
 import { InquiryStage, UploadedFile, ChatMessage, InquiryMove, OrbAction, Topic } from "../types";
 import { getRagFilesForSection } from "./ragService";
 
 const model = "gemini-2.5-flash";
+
+export const generateVisualizationImage = async (text: string, type: 'research_argument' | 'semantic_map'): Promise<string | null> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  
+  let prompt = "";
+  if (type === 'research_argument') {
+    prompt = `Create a clean, professional, and highly legible diagram or mind map illustrating a Toulmin Research Argument based on this text. Show Claim, Evidence, Warrant, and Assumptions. Use clear text and a structured layout.\n\nText:\n${text.substring(0, 1000)}`;
+  } else {
+    prompt = `Create a clean, professional semantic network map or mind map based on this text. Show the main thematic clusters and their connections. Use clear text and a structured layout.\n\nText:\n${text.substring(0, 1000)}`;
+  }
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: {
+        parts: [
+          { text: prompt }
+        ]
+      },
+      config: {
+        imageConfig: {
+          aspectRatio: "16:9"
+        }
+      }
+    });
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+    return null;
+  } catch (e) {
+    console.error("Error generating image:", e);
+    return null;
+  }
+};
 
 // IMPORTANT: This should be a RELATIVE URL so it works locally + on Cloud Run.
 // Your Express server handles the API key via env var and forwards to Google.
@@ -210,13 +248,8 @@ export const generateOrbResponse = async (word: string, action: OrbAction, conte
 };
 
 export const generateResearchArgument = async (text: string): Promise<string> => {
-  const prompt = `Analyze the following text using the Toulmin model of argumentation. Break it down into:
-1. Claim (the main argument)
-2. Evidence/Data (the facts or data supporting the claim)
-3. Warrant (the underlying connection between the claim and evidence)
-4. Assumptions/Backing (the underlying beliefs that support the warrant)
-
-After the breakdown, recommend specific areas in the text where more information or evidence should be added to strengthen the argument.
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const prompt = `Provide a brief description of the visual diagram representing the research argument for the following text. Briefly list the Claim, Evidence, Warrant, and Assumptions in a few concise bullet points.
 
 Text:
 """
@@ -224,7 +257,11 @@ ${text.substring(0, 5000)}
 """`;
 
   try {
-    return await geminiGenerate(null, [{ role: "user", parts: [{ text: prompt }] }]);
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt
+    });
+    return response.text || "Analysis generated successfully.";
   } catch (e) {
     console.error(e);
     return "I’m having trouble connecting right now. Please check the server logs and try again.";
@@ -232,10 +269,8 @@ ${text.substring(0, 5000)}
 };
 
 export const generateSemanticMap = async (text: string): Promise<string> => {
-  const prompt = `Perform an Infranodus-style semantic network analysis on the following text. Identify:
-1. The main thematic clusters (patterns).
-2. The structural gaps (missing connections between clusters).
-3. Recommendations for bridging these gaps to create a more cohesive narrative.
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const prompt = `Provide a brief description of the semantic network map for the following text. Briefly list the main thematic clusters and structural gaps in a few concise bullet points.
 
 Text:
 """
@@ -243,7 +278,11 @@ ${text.substring(0, 5000)}
 """`;
 
   try {
-    return await geminiGenerate(null, [{ role: "user", parts: [{ text: prompt }] }]);
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt
+    });
+    return response.text || "Analysis generated successfully.";
   } catch (e) {
     console.error(e);
     return "I’m having trouble connecting right now. Please check the server logs and try again.";

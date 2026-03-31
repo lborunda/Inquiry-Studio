@@ -28,7 +28,7 @@ const VisualAnalysisModal: React.FC<VisualAnalysisModalProps> = ({ isOpen, onClo
             onClick={() => { onSelectOption('research_argument'); onClose(); }}
             className="p-4 border-2 border-gray-200 rounded-lg hover:border-gray-800 hover:bg-gray-50 transition-all text-left"
           >
-            <h3 className="font-bold text-lg mb-1">Research Argument (Toulmin)</h3>
+            <h3 className="font-bold text-lg mb-1">Research Argument</h3>
             <p className="text-sm text-gray-600">Break down your argument into Claim, Evidence, Warrant, and Assumptions.</p>
           </button>
           
@@ -36,7 +36,7 @@ const VisualAnalysisModal: React.FC<VisualAnalysisModalProps> = ({ isOpen, onClo
             onClick={() => { onSelectOption('semantic_map'); onClose(); }}
             className="p-4 border-2 border-gray-200 rounded-lg hover:border-gray-800 hover:bg-gray-50 transition-all text-left"
           >
-            <h3 className="font-bold text-lg mb-1">Semantic Map (Infranodus Style)</h3>
+            <h3 className="font-bold text-lg mb-1">Semantic Map</h3>
             <p className="text-sm text-gray-600">Identify patterns, gaps, and structural holes in your data.</p>
           </button>
         </div>
