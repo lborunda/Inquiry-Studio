@@ -1,9 +1,9 @@
 // services/geminiService.ts
 import { GoogleGenAI } from "@google/genai";
-import { InquiryStage, UploadedFile, ChatMessage, InquiryMove, OrbAction, Topic } from "../types";
+import { InquiryStage, UploadedFile, ChatMessage, OrbAction, Topic } from "../types";
 import { getRagFilesForSection } from "./ragService";
 
-const model = "gemini-2.5-flash";
+const model = "gemini-3.1-pro-preview";
 
 export const generateVisualizationImage = async (text: string, type: 'research_argument' | 'semantic_map'): Promise<string | null> => {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -81,15 +81,18 @@ async function geminiGenerate(systemInstruction: string | null, contents: any[])
 
 const getSystemInstruction = async (
   stage: InquiryStage,
-  move: InquiryMove,
   studentFiles: UploadedFile[],
-  designResearchRatio: number,
-  fundamentalAppliedRatio: number
+  practiceResearchRatio: number,
+  writingText: string
 ): Promise<string> => {
   let instruction =
     `You are an AI epistemic scaffold for an architecture/research student. ` +
     `Your role is to support the transition from exploratory problem construction to formal research design and structured validation. ` +
-    `You are NOT just a writing tutor; you are a partner in inquiry. Maintain a calm, institutional, grant-ready tone. `;
+    `You are NOT just a writing tutor; you are a partner in inquiry. Maintain a calm, institutional, grant-ready tone. ` +
+    `CRITICAL GUARDRAILS: ` +
+    `1. DO NOT fabricate citations or references. If asked for literature, teach the student how to search academic databases (e.g., Google Scholar, JSTOR, Avery Index) using specific keywords related to their topic. ` +
+    `2. DO NOT ghost-write for the student. If asked to write a section, explicitly refuse and instead offer an outline, structural advice, or a review of their existing draft. ` +
+    `3. If the user asks for off-topic assistance (e.g., writing a cover letter, coding a website), explicitly state your scope: "I am an AI designed to support academic research and inquiry in architecture. I cannot assist with [off-topic request]. Let's return to your research." `;
 
   const studentFileContext = studentFiles
     .map(f => (f.summary ? `${f.name} (Summary: ${f.summary.substring(0, 200)}...)` : f.name))
@@ -107,36 +110,24 @@ const getSystemInstruction = async (
 
   instruction += `The student is currently in the '${stage}' stage of inquiry. `;
 
-  if (stage === InquiryStage.RESEARCH_DESIGN) {
+  if (stage === InquiryStage.LITERATURE_REVIEW) {
+    instruction += `Focus on helping the student define the problem space, conceptual model, and review relevant literature. `;
+  } else if (stage === InquiryStage.RESEARCH_DESIGN) {
     instruction +=
       `Silently classify the student's apparent research design (Experimental, Simulation, Case study, Ethnographic, Design research, or Theoretical modeling) ` +
-      `and adapt your feedback to be appropriate for that methodology. Do not explicitly state the classification unless asked. `;
+      `and adapt your feedback to be appropriate for that methodology. Do not explicitly state the classification unless asked. Focus on methodology and research design. `;
+  } else if (stage === InquiryStage.COMMUNICATING_WRITING) {
+    instruction += `Focus on editorial review, structuring the argument, advising on writing, and grammar support. Act as a peer reviewer. `;
   }
 
-  const designResearchFocus = designResearchRatio < 50 ? "more design-oriented" : "more research-oriented";
-  const fundamentalAppliedFocus = fundamentalAppliedRatio < 50 ? "more fundamental science-oriented" : "more applied science-oriented";
-  instruction += `Your feedback should be ${designResearchFocus} and ${fundamentalAppliedFocus}. `;
-  instruction += `Your current epistemic move is '${move}'. `;
+  const practiceResearchFocus = practiceResearchRatio < 50 ? "more practice-oriented" : "more research-oriented";
+  instruction += `Your feedback should be ${practiceResearchFocus}. `;
 
-  switch (move) {
-    case InquiryMove.GENERATE_POSSIBILITIES:
-      instruction += "Goal: Divergence. Generate a wide range of ideas, 'what-if' scenarios, and alternative directions. Focus on expansion and possibility. Connect disparate concepts.";
-      break;
-    case InquiryMove.CLARIFY_CONCEPTS:
-      instruction += "Goal: Definition and Precision. Help the student define their terms clearly. Ask for operational definitions of key variables. Ensure conceptual consistency.";
-      break;
-    case InquiryMove.SURFACE_ASSUMPTIONS:
-      instruction += "Goal: Critical Reflection. Identify hidden premises, unstated beliefs, and causal leaps in the student's reasoning. Ask 'What must be true for this to hold?'";
-      break;
-    case InquiryMove.STRESS_TEST_CLAIMS:
-      instruction += "Goal: Validation. Challenge the student's arguments. Raise potential objections, counter-examples, and alternative explanations. Test the strength of their inferences.";
-      break;
-    case InquiryMove.REFINE_STRUCTURE:
-      instruction += "Goal: Coherence. Focus on the logical flow and structural integrity of the argument. Ensure the research design aligns with the problem statement and the evidence supports the claims.";
-      break;
+  if (writingText) {
+    instruction += `The student is currently working on the following text in their main editor. Use this as context for your responses, and if appropriate, offer explicit recommendations on this text:\n\n---\n${writingText.substring(0, 2000)}\n---\n\n`;
   }
 
-  instruction += ` When providing feedback, structure your response with clear, actionable points. Be concise. Use Markdown for headings and lists. To emphasize key terms (Tensions, Variables, Hypotheses, Evidence, Assumptions), wrap them in asterisks, like *this*.`;
+  instruction += `When providing feedback, structure your response with clear, actionable points. Be concise. Use Markdown for headings and lists. To emphasize key terms, wrap them in double asterisks to bold them, like **this**.`;
 
   return instruction;
 };
@@ -145,14 +136,13 @@ export const generateTutorResponse = async (
   prompt: string,
   history: ChatMessage[],
   stage: InquiryStage,
-  move: InquiryMove,
   studentFiles: UploadedFile[],
-  designResearchRatio: number,
-  fundamentalAppliedRatio: number
+  practiceResearchRatio: number,
+  writingText: string
 ): Promise<string> => {
-  const systemInstruction = await getSystemInstruction(stage, move, studentFiles, designResearchRatio, fundamentalAppliedRatio);
+  const systemInstruction = await getSystemInstruction(stage, studentFiles, practiceResearchRatio, writingText);
 
-  const apiHistory = history.map(h => ({
+  const apiHistory = history.slice(-10).map(h => ({
     role: h.role,
     parts: [{ text: h.content }],
   }));
@@ -258,7 +248,7 @@ ${text.substring(0, 5000)}
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3.1-pro-preview',
       contents: prompt
     });
     return response.text || "Analysis generated successfully.";
@@ -279,7 +269,7 @@ ${text.substring(0, 5000)}
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3.1-pro-preview',
       contents: prompt
     });
     return response.text || "Analysis generated successfully.";

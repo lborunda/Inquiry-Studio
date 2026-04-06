@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
-import { InquiryStage, InquiryMove, InquiryPhase, ChatMessage, UploadedFile, ConceptNode, Project, OrbAction } from './types';
+import { InquiryStage, ChatMessage, UploadedFile, ConceptNode, Project, OrbAction } from './types';
 import { generateTutorResponse, summarizeFile, generateOrbResponse, checkAssumptions, generateResearchArgument, generateSemanticMap, generateSuggestions, generateVisualizationImage } from './services/geminiService';
 import { getRagFilesForSection } from './services/ragService';
 import PointCloud from './components/PointCloud';
@@ -8,7 +8,6 @@ import ReferencesModal from './components/ReferencesModal';
 import WelcomeModal from './components/WelcomeModal';
 import AboutModal from './components/AboutModal';
 import ConceptOrb from './components/ConceptOrb';
-import TutorModeSelector from './components/TutorModeSelector';
 import ConceptMapModal from './components/ConceptMapModal';
 import FormattingToolbar from './components/FormattingToolbar';
 import ImageGallery from './components/ImageGallery';
@@ -89,10 +88,14 @@ const EditableCanvas = React.forwardRef<HTMLDivElement, any>(({ html, onChange, 
 
 const App = () => {
   // Global App State
-  const [activeStage, setActiveStage] = useState<InquiryStage>(InquiryStage.PROBLEM_SPACE);
-  const [inquiryMove, setInquiryMove] = useState<InquiryMove>(InquiryMove.GENERATE_POSSIBILITIES);
-  const [designResearchRatio, setDesignResearchRatio] = useState(50);
-  const [fundamentalAppliedRatio, setFundamentalAppliedRatio] = useState(50);
+  const [activeStage, setActiveStage] = useState<InquiryStage>(() => {
+    const saved = localStorage.getItem('site_activeStage');
+    return saved ? (saved as InquiryStage) : InquiryStage.LITERATURE_REVIEW;
+  });
+  const [practiceResearchRatio, setPracticeResearchRatio] = useState(() => {
+    const saved = localStorage.getItem('site_practiceResearchRatio');
+    return saved ? Number(saved) : 50;
+  });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [layoutMode, setLayoutMode] = useState<'horizontal' | 'vertical'>('vertical');
@@ -131,14 +134,6 @@ const App = () => {
 
   // Derived active project
   const activeProject = useMemo(() => projects.find(p => p.id === activeProjectId), [projects, activeProjectId]);
-
-  // Derived phase
-  const currentPhase = useMemo(() => {
-      if (activeStage === InquiryStage.PROBLEM_SPACE || activeStage === InquiryStage.CONCEPTUAL_MODEL) {
-          return InquiryPhase.PHASE_I;
-      }
-      return InquiryPhase.PHASE_II;
-  }, [activeStage]);
 
   // Load projects from localStorage on initial render
   useEffect(() => {
@@ -194,9 +189,10 @@ const App = () => {
     }
   }, [isReferencesModalOpen, activeStage]);
   
-  const handleInquiryMoveChange = (newMove: InquiryMove) => {
-    setInquiryMove(newMove);
-  };
+  useEffect(() => {
+    localStorage.setItem('site_activeStage', activeStage);
+    localStorage.setItem('site_practiceResearchRatio', practiceResearchRatio.toString());
+  }, [activeStage, practiceResearchRatio]);
 
   const handleTutorRequest = useCallback(async (prompt: string, isSystemMessage = false) => {
     if (!prompt.trim() || !activeProject) return;
@@ -220,23 +216,21 @@ const App = () => {
     updateActiveProject({ chatHistory: newHistory });
     setChatInput('');
 
-    const responseText = await generateTutorResponse(prompt, newHistory, activeStage, inquiryMove, activeProject.studentFiles, designResearchRatio, fundamentalAppliedRatio);
+    const responseText = await generateTutorResponse(prompt, newHistory, activeStage, activeProject.studentFiles, practiceResearchRatio, activeProject.writingText);
     
     const modelMessage: ChatMessage = { id: `model-${Date.now()}`, role: 'model', content: responseText };
     setProjects(prevProjects => prevProjects.map(p => p.id === activeProjectId ? { ...p, chatHistory: [...newHistory, modelMessage] } : p));
     setIsLoading(false);
-  }, [activeProject, activeProjectId, activeStage, inquiryMove, designResearchRatio, fundamentalAppliedRatio]);
+  }, [activeProject, activeProjectId, activeStage, practiceResearchRatio]);
 
   const handleStageChange = (newStage: InquiryStage) => {
       // Logic for transitions
-      if (activeStage === InquiryStage.PROBLEM_SPACE && newStage === InquiryStage.RESEARCH_DESIGN) {
-          // Bridge Literature -> Design Transition
-          handleTutorRequest("Which gap, variable, or tension from your literature review does this design address?", true);
-      }
-      
-      if (newStage === InquiryStage.CONCEPTUAL_MODEL && activeStage !== InquiryStage.CONCEPTUAL_MODEL) {
-          // Model Builder Prompt
-          handleTutorRequest("What core mechanism or relationship are you proposing? Please answer in one sentence.", true);
+      if (activeStage === InquiryStage.LITERATURE_REVIEW && newStage === InquiryStage.RESEARCH_DESIGN) {
+          handleTutorRequest("You have moved to the Research Design stage. Which gap, variable, or tension from your literature review does this design address?", true);
+      } else if (activeStage === InquiryStage.RESEARCH_DESIGN && newStage === InquiryStage.COMMUNICATING_WRITING) {
+          handleTutorRequest("You have moved to the Communicating & Writing stage. How can we best structure your findings and methodology for your audience?", true);
+      } else if (activeStage !== newStage) {
+          handleTutorRequest(`You have moved to the ${newStage} stage. How can I help you with this phase?`, true);
       }
 
       setActiveStage(newStage);
@@ -690,36 +684,20 @@ const App = () => {
            <div className={`p-6 overflow-y-auto h-full space-y-8 transition-opacity ${isSidebarOpen ? 'opacity-100' : 'opacity-0'}`}>
               <div>
                 <h2 className="text-sm font-semibold uppercase text-gray-500 mb-3">Inquiry Stage</h2>
-                <div className="mb-2 text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded inline-block">
-                    {currentPhase}
-                </div>
                 <div className="space-y-1">{Object.values(InquiryStage).map(stage => (
                     <button key={stage} onClick={() => handleStageChange(stage)} className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeStage === stage ? 'bg-gray-800 text-white' : 'hover:bg-gray-200'}`}>{stage}</button>
                 ))}</div>
               </div>
 
               <div>
-                <h2 className="text-sm font-semibold uppercase text-gray-500 mb-3">Inquiry Move</h2>
-                {Object.values(InquiryMove).map(move => (
-                    <div key={move}>
-                      <label className="flex items-center space-x-2 cursor-pointer p-2 rounded-md hover:bg-gray-200">
-                          <input type="radio" name="inquiryMove" value={move} checked={inquiryMove === move} onChange={() => handleInquiryMoveChange(move)} className="h-4 w-4 text-gray-800 border-gray-300 focus:ring-gray-700"/>
-                          <span className="text-sm font-semibold">{move}</span>
-                      </label>
-                    </div>
-                ))}
-              </div>
-              
-              <div>
                 <h2 className="text-sm font-semibold uppercase text-gray-500 mb-3">Tutor Orientation</h2>
                 <div className="space-y-4 px-2">
                     <div>
-                        <div className="flex justify-between text-xs text-gray-600"><span>Design-Oriented</span><span>Research-Oriented</span></div>
-                        <input type="range" min="0" max="100" value={designResearchRatio} onChange={(e) => setDesignResearchRatio(Number(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gray-800"/>
-                    </div>
-                    <div>
-                        <div className="flex justify-between text-xs text-gray-600"><span>Fundamental</span><span>Applied</span></div>
-                        <input type="range" min="0" max="100" value={fundamentalAppliedRatio} onChange={(e) => setFundamentalAppliedRatio(Number(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gray-800"/>
+                        <div className="flex justify-between text-xs text-gray-600"><span>Practice-Oriented</span><span>Research-Oriented</span></div>
+                        <input type="range" min="0" max="100" step="25" value={practiceResearchRatio} onChange={(e) => setPracticeResearchRatio(Number(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gray-800"/>
+                        <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+                          <span>100%</span><span>75%</span><span>50%</span><span>25%</span><span>0%</span>
+                        </div>
                     </div>
                 </div>
               </div>
@@ -814,17 +792,17 @@ const App = () => {
 
           <div className={`flex-shrink-0 flex flex-col bg-white/50 ${layoutMode === 'horizontal' ? 'h-1/3 max-h-[50vh] border-t border-gray-200/80' : 'w-[450px] max-w-[40%] border-l border-gray-200/80'}`}>
             <div className="p-3 flex items-center gap-4 border-b border-gray-200/80 flex-shrink-0">
-              <div className="flex gap-2">
+              <div className="flex gap-2 w-full justify-center">
                 <button 
                   onClick={handleTutorReview} 
                   disabled={isLoading || !activeProject} 
-                  title="Literature Analysis (Cmd/Ctrl + Enter)" 
+                  title="Analyze full text (Cmd/Ctrl + Enter)" 
                   className="cursor-pointer disabled:cursor-not-allowed flex flex-col items-center group"
                 >
                   <div className="w-12 h-12 rounded-full bg-blue-50 border-2 border-blue-200 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
                     <TutorShell progress={shellProgress} isThinking={isLoading} />
                   </div>
-                  <span className="text-[10px] text-gray-500 mt-1 font-medium uppercase tracking-wider">Lit Analysis</span>
+                  <span className="text-[10px] text-gray-500 mt-1 font-medium uppercase tracking-wider">Analyze full text</span>
                 </button>
                 
                 <button 
@@ -838,9 +816,6 @@ const App = () => {
                   </div>
                   <span className="text-[10px] text-gray-500 mt-1 font-medium uppercase tracking-wider">Visual Tool</span>
                 </button>
-              </div>
-              <div className="flex-1">
-                <TutorModeSelector move={inquiryMove} onMoveChange={handleInquiryMoveChange} />
               </div>
             </div>
 

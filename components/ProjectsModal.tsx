@@ -43,7 +43,7 @@ const ProjectsModal: React.FC<ProjectsModalProps> = ({
               >
                 {project.name}
                 <div className="text-xs text-gray-500 mt-1">
-                  Last updated: {new Date(project.updatedAt).toLocaleDateString()}
+                  Last updated: {new Date(project.lastModified).toLocaleDateString()}
                 </div>
               </button>
               

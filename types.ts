@@ -1,23 +1,8 @@
 
 export enum InquiryStage {
-  PROBLEM_SPACE = "Problem Space",
-  CONCEPTUAL_MODEL = "Conceptual Model",
+  LITERATURE_REVIEW = "Literature Review",
   RESEARCH_DESIGN = "Research Design",
-  ANALYSIS_EVIDENCE = "Analysis & Evidence",
-  ARGUMENT_STRUCTURE = "Argument Structure",
-}
-
-export enum InquiryMove {
-  GENERATE_POSSIBILITIES = "Generate Possibilities",
-  CLARIFY_CONCEPTS = "Clarify Concepts",
-  SURFACE_ASSUMPTIONS = "Surface Assumptions",
-  STRESS_TEST_CLAIMS = "Stress-Test Claims",
-  REFINE_STRUCTURE = "Refine Structure",
-}
-
-export enum InquiryPhase {
-  PHASE_I = "Phase I: Problem & Model",
-  PHASE_II = "Phase II: Design & Validation",
+  COMMUNICATING_WRITING = "Communicating & Writing",
 }
 
 export enum OrbAction {

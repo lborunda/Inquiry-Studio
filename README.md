@@ -5,13 +5,15 @@
 ## 🌟 Features
 
 - **Interactive Writing Canvas**: A distraction-free, editable canvas with drag-and-drop support for files (PDFs, images) and rich text formatting.
-- **AI-Powered Tutor (TutorShell)**: Context-aware AI assistance powered by Gemini, offering critique, suggestions, and guidance based on the current inquiry stage and move.
+- **AI-Powered Tutor (TutorShell)**: Context-aware AI assistance powered by Gemini 3.1 Pro, offering critique, suggestions, and guidance based on the current inquiry stage.
+- **Three-Phase Inquiry Process**: Guides students through Literature Review, Research Design, and Communicating & Writing.
 - **Dynamic Concept Mapping**: Automatically generate and visualize concept nodes and relationships as your research evolves.
 - **Knowledge Base & References (RAG)**: Upload and manage reference documents. The system uses Retrieval-Augmented Generation (RAG) to provide contextual insights and summaries.
-- **Visual Analysis & Image Gallery**: Upload images to your "desk" and perform AI-driven visual analysis.
+- **Visual Analysis Tool**: Generate Toulmin Research Arguments and Semantic Network Maps to help visualize your ideas.
 - **Researcher Network (Social)**: Connect your ideas with a simulated or real network of researchers to find overlapping interests.
 - **Multi-Project Management**: Seamlessly switch between different research projects, saving your progress, chat history, and files locally.
-- **Customizable Tutor Orientation**: Adjust the AI's feedback style using sliders for "Design-Oriented vs. Research-Oriented" and "Fundamental vs. Applied" approaches.
+- **Customizable Tutor Orientation**: Adjust the AI's feedback style using a slider for "Practice-Oriented vs. Research-Oriented" approaches.
+- **Robust Guardrails**: The AI is programmed to avoid fabricating citations and ghost-writing, instead focusing on teaching research skills and providing structural advice.
 
 ## 🛠 Tech Stack
 
