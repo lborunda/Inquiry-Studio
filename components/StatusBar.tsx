@@ -55,7 +55,7 @@ export default function StatusBar({
   };
 
   const getSliderValueTooltip = () => {
-    return `${practiceResearchRatio}% Research-oriented\nPractice: design and making\nResearch: theory and methods`;
+    return `Knowing-How emphasizes practice and the design process.\nKnowing-That emphasizes systematic research, generating new knowledge, and making tacit design knowledge explicit.`;
   };
 
   const handleMouseUp = () => {
@@ -76,7 +76,7 @@ export default function StatusBar({
       {/* LEFT: Practice-Research orientation slider */}
       <div className="flex items-center gap-3 relative mr-4" onMouseLeave={() => setShowPopover(false)}>
         <div className="hidden md:flex items-center gap-3" title={getSliderValueTooltip()}>
-          <span className="text-gray-600 font-medium whitespace-nowrap">Practice</span>
+          <span className="text-gray-600 font-medium whitespace-nowrap">Knowing-How</span>
           <input 
             type="range" 
             min="0" 
@@ -88,9 +88,9 @@ export default function StatusBar({
             onMouseUp={handleMouseUp}
             onTouchEnd={handleMouseUp}
             className="w-[200px] accent-[#C9A961] cursor-pointer"
-            aria-label="Practice to Research orientation"
+            aria-label="Knowing-How to Knowing-That orientation"
           />
-          <span className="text-gray-600 font-medium whitespace-nowrap">Research</span>
+          <span className="text-gray-600 font-medium whitespace-nowrap">Knowing-That</span>
         </div>
         
         {/* Mobile orientation pill */}
@@ -99,14 +99,14 @@ export default function StatusBar({
             className="px-2 py-1 bg-white border border-gray-200 rounded text-gray-600 font-medium whitespace-nowrap"
             onClick={() => setShowPopover(!showPopover)}
           >
-            P↔R: {practiceResearchRatio}%
+            KH↔KT: {practiceResearchRatio}%
           </button>
           
           {showPopover && (
              <div className="absolute bottom-full left-0 mb-2 p-3 bg-white border border-gray-200 shadow-lg rounded-md flex flex-col gap-2 z-50">
-               <div className="text-xs text-gray-500 whitespace-pre-wrap">{`${practiceResearchRatio}% Research-oriented\nPractice: design and making\nResearch: theory and methods`}</div>
+               <div className="text-xs text-gray-500 whitespace-pre-wrap">{getSliderValueTooltip()}</div>
                <div className="flex items-center gap-2 mt-1">
-                 <span className="text-gray-600 font-medium text-xs whitespace-nowrap">Practice</span>
+                 <span className="text-gray-600 font-medium text-xs whitespace-nowrap">Knowing-How</span>
                  <input 
                     type="range" 
                     min="0" 
@@ -118,9 +118,9 @@ export default function StatusBar({
                     onMouseUp={handleMouseUp}
                     onTouchEnd={handleMouseUp}
                     className="w-[150px] accent-[#C9A961]"
-                    aria-label="Practice to Research orientation"
+                    aria-label="Knowing-How to Knowing-That orientation"
                   />
-                 <span className="text-gray-600 font-medium text-xs whitespace-nowrap">Research</span>
+                 <span className="text-gray-600 font-medium text-xs whitespace-nowrap">Knowing-That</span>
                </div>
              </div>
           )}
