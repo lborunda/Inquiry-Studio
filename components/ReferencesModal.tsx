@@ -143,9 +143,9 @@ const ReferencesModal = ({ isOpen, onClose, studentFiles, instructorFiles, onStu
             <div className="prose prose-sm max-w-none">
               <h3 className="text-lg font-semibold mb-2">AI Model Transparency</h3>
               <div className="space-y-4 text-gray-700">
-                <div>
+                 <div>
                   <h4 className="font-semibold">Model</h4>
-                  <p>This application uses Google's <code className="text-sm bg-gray-100 p-1 rounded">gemini-2.5-flash</code> model. It's a powerful, multimodal model optimized for speed and complex reasoning.</p>
+                  <p>This application uses Google's <code className="text-sm bg-gray-100 p-1 rounded">gemini-3.1-pro-preview</code> model. It's a powerful, multimodal model optimized for complex reasoning. An additional 2.5-flash model is used for image generation.</p>
                 </div>
                 <div>
                   <h4 className="font-semibold">Function</h4>
@@ -153,7 +153,7 @@ const ReferencesModal = ({ isOpen, onClose, studentFiles, instructorFiles, onStu
                 </div>
                  <div>
                   <h4 className="font-semibold">Versions</h4>
-                  <p>Model Version: <code className="text-sm bg-gray-100 p-1 rounded">v1.0.0 (gemini-2.5-flash)</code><br/>Application Version: <code className="text-sm bg-gray-100 p-1 rounded">SITE v2.1</code></p>
+                  <p>Model Version: <code className="text-sm bg-gray-100 p-1 rounded">gemini-3.1-pro-preview</code><br/>Application Version: <code className="text-sm bg-gray-100 p-1 rounded">Inquiry Studio v2.7</code></p>
                 </div>
                 <div>
                   <h4 className="font-semibold">Fine-Tuning Data & Grounding</h4>

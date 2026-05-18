@@ -39,7 +39,7 @@ export default function CommandPalette({ isOpen, onClose, onExecute, activeStage
   const overlayClass = isDocked ? '' : 'fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-40';
   const containerClass = isDocked 
     ? 'flex-shrink-0 flex flex-col h-full w-[280px] bg-[#171717] border-r border-gray-800 text-gray-200 z-30'
-    : 'fixed z-50 top-[15vh] left-1/2 -translate-x-1/2 w-full max-w-2xl bg-[#171717] rounded-xl shadow-2xl overflow-hidden border border-gray-800 text-gray-200';
+    : 'fixed z-50 top-[15vh] left-1/2 -translate-x-1/2 w-full max-w-2xl max-h-[80vh] flex flex-col bg-[#171717] rounded-xl shadow-2xl overflow-hidden border border-gray-800 text-gray-200';
 
   return (
     <>

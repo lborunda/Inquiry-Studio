@@ -14,8 +14,7 @@ export const generateVisualizationImage = async (text: string, type: 'research_a
   }
 
   try {
-    const apiKey = process.env.GEMINI_API_KEY || '';
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const endpoint = `/api-proxy/v1beta/models/gemini-2.5-flash:generateContent`;
     const body = {
       contents: [
         {
@@ -55,8 +54,7 @@ export const generateVisualizationImage = async (text: string, type: 'research_a
 // IMPORTANT: This should be a RELATIVE URL so it works locally + on Cloud Run.
 // Your Express server handles the API key via env var and forwards to Google.
 async function geminiGenerate(systemInstruction: string | null, contents: any[]) {
-  const apiKey = process.env.GEMINI_API_KEY || '';
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const endpoint = `/api-proxy/v1beta/models/${model}:generateContent`;
 
   const body: any = {
     contents,

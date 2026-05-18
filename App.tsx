@@ -12,7 +12,6 @@ import ImageGallery from './components/ImageGallery';
 import SocialModal from './components/SocialModal';
 import TutorialModal from './components/TutorialModal';
 import ProjectsModal from './components/ProjectsModal';
-import VisualAnalysisModal from './components/VisualAnalysisModal';
 import TopLeftTextStrip from './components/TopLeftTextStrip';
 import { WandIcon, ReferenceIcon, SendIcon, InfoIcon, ChevronLeftIcon, ChevronRightIcon, BookmarkIcon, ChevronDownIcon, LayoutHorizontalIcon, LayoutVerticalIcon, MapIcon, ImageIcon, FormatIcon, UsersIcon } from './components/icons';
 import { Menu, Sparkles, Network, History, ChevronRight } from 'lucide-react';
@@ -119,9 +118,8 @@ const App = () => {
   const [isSocialModalOpen, setIsSocialModalOpen] = useState(false);
   const [isImageGalleryOpen, setIsImageGalleryOpen] = useState(false);
   const [isFormattingToolbarOpen, setIsFormattingToolbarOpen] = useState(false);
-  const [isTutorialOpen, setIsTutorialOpen] = useState(true);
+  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
-  const [isVisualAnalysisModalOpen, setIsVisualAnalysisModalOpen] = useState(false);
   const [isInquiryTrailModalOpen, setIsInquiryTrailModalOpen] = useState(false); // keep for old logic if not wiped yet
   const [visualizationImage, setVisualizationImage] = useState<string | null>(null);
   const [isVisualizationImageOpen, setIsVisualizationImageOpen] = useState(false);
@@ -174,7 +172,6 @@ const App = () => {
 
   // Load projects from localStorage on initial render
   useEffect(() => {
-    setIsTutorialOpen(true);
     const savedProjects = localStorage.getItem('site_projects');
     const savedActiveId = localStorage.getItem('site_activeProjectId');
     
@@ -221,12 +218,6 @@ const App = () => {
     if (!hasSeenWelcome) {
       setIsWelcomeOpen(true);
       localStorage.setItem('inquiry_studio_has_launched', 'true');
-    }
-    
-    const aiLiteracySeen = localStorage.getItem('ai_literacy_seen');
-    if (!aiLiteracySeen) {
-      setIsAILiteracyOnboardingOpen(true);
-      localStorage.setItem('ai_literacy_seen', 'true');
     }
   }, []);
 
@@ -894,6 +885,63 @@ const App = () => {
     // Optional: show a toast or temporary success state
   };
 
+  const handleVisualAnalysisOption = async (option: 'mental_map' | 'research_argument' | 'semantic_map') => {
+    if (!activeProject) return;
+    const plainText = stripHtml(activeProject.writingText);
+    
+    if (option === 'mental_map') {
+      setIsMapModalOpen(true);
+    } else if (option === 'research_argument') {
+      setIsLoading(true);
+      const userMsg: ChatMessage = { id: `user-${Date.now()}`, role: 'user', content: "Generate a Toulmin Research Argument analysis." };
+      
+      try {
+        const [response, image] = await Promise.all([
+          generateResearchArgument(plainText),
+          generateVisualizationImage(plainText, 'research_argument')
+        ]);
+        
+        const modelMsg: ChatMessage = { id: `model-${Date.now()}`, role: 'model', content: response };
+        updateActiveProject({ chatHistory: [...activeProject.chatHistory, userMsg, modelMsg] });
+        
+        if (image) {
+          setVisualizationImage(image);
+          setIsVisualizationImageOpen(true);
+        }
+      } catch (error: any) {
+        console.error("Error generating visual analysis:", error);
+        const errorMsg: ChatMessage = { id: `model-${Date.now()}`, role: 'model', content: `I encountered an error while generating the visual analysis (${error.message || String(error)}). Please try again.`, isError: true };
+        updateActiveProject({ chatHistory: [...activeProject.chatHistory, userMsg, errorMsg] });
+      } finally {
+        setIsLoading(false);
+      }
+    } else if (option === 'semantic_map') {
+      setIsLoading(true);
+      const userMsg: ChatMessage = { id: `user-${Date.now()}`, role: 'user', content: "Generate a Semantic Map analysis." };
+      
+      try {
+        const [response, image] = await Promise.all([
+          generateSemanticMap(plainText),
+          generateVisualizationImage(plainText, 'semantic_map')
+        ]);
+        
+        const modelMsg: ChatMessage = { id: `model-${Date.now()}`, role: 'model', content: response };
+        updateActiveProject({ chatHistory: [...activeProject.chatHistory, userMsg, modelMsg] });
+        
+        if (image) {
+          setVisualizationImage(image);
+          setIsVisualizationImageOpen(true);
+        }
+      } catch (error: any) {
+        console.error("Error generating visual analysis:", error);
+        const errorMsg: ChatMessage = { id: `model-${Date.now()}`, role: 'model', content: `I encountered an error while generating the visual analysis (${error.message || String(error)}). Please try again.`, isError: true };
+        updateActiveProject({ chatHistory: [...activeProject.chatHistory, userMsg, errorMsg] });
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
   const handleCommandPaletteAction = (action: string, payload?: any) => {
     switch (action) {
       case 'switch-project': setIsProjectsModalOpen(true); break;
@@ -908,7 +956,14 @@ const App = () => {
       case 'open-researcher-network': setIsSocialModalOpen(true); break;
       case 'open-references': setIsReferencesModalOpen(true); break;
       case 'analyze-full-text': handleTutorReview(); break;
-      case 'visual-tool': setIsVisualAnalysisModalOpen(true); break;
+      case 'visual-tool': 
+        if (payload && ['mental_map', 'research_argument', 'semantic_map'].includes(payload)) {
+          handleVisualAnalysisOption(payload);
+        } else {
+          // If no payload provided (e.g. they search Visual Analysis), we could default to something or show a submenu. For now, default to research_argument or do nothing.
+          handleVisualAnalysisOption('research_argument');
+        }
+        break;
       case 're-analyze': handleTutorReview(); break;
       case 'explore-concept-disciplines':
         setChatInput("Take the concept from my text and explore how it appears in 3 disciplines outside architecture. What does each lens reveal?");
@@ -985,12 +1040,11 @@ const App = () => {
         else if (isTrailOpen) setIsTrailOpen(false);
         else if (isVisualDropdownOpen) setIsVisualDropdownOpen(false);
         else if (isVersionsDropdownOpen) setIsVersionsDropdownOpen(false);
-        else if (isVisualAnalysisModalOpen) setIsVisualAnalysisModalOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeProject, isCmdKOpen, isTrailOpen, isVisualDropdownOpen, isVersionsDropdownOpen, isVisualAnalysisModalOpen, handleTutorReview]);
+  }, [activeProject, isCmdKOpen, isTrailOpen, isVisualDropdownOpen, isVersionsDropdownOpen, handleTutorReview]);
 
   return (
     <div className="min-h-screen h-screen bg-[#fcfcfc] text-gray-900 flex flex-col relative overflow-hidden" onMouseUp={handleTextSelection}>
@@ -1130,9 +1184,9 @@ const App = () => {
                 </button>
                 {isVisualDropdownOpen && (
                   <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg py-1 z-30">
-                    <button onClick={() => { setIsVisualDropdownOpen(false); setIsVisualAnalysisModalOpen(true); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Argument map</button>
-                    <button onClick={() => { setIsVisualDropdownOpen(false); setIsVisualAnalysisModalOpen(true); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Semantic network</button>
-                    <button onClick={() => { setIsVisualDropdownOpen(false); setIsVisualAnalysisModalOpen(true); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Mental map</button>
+                    <button onClick={() => { setIsVisualDropdownOpen(false); handleVisualAnalysisOption('research_argument'); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Argument map</button>
+                    <button onClick={() => { setIsVisualDropdownOpen(false); handleVisualAnalysisOption('semantic_map'); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Semantic network</button>
+                    <button onClick={() => { setIsVisualDropdownOpen(false); handleVisualAnalysisOption('mental_map'); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Mental map</button>
                   </div>
                 )}
               </div>
@@ -1361,73 +1415,6 @@ const App = () => {
         onRenameProject={(id, newName) => {
           setProjects(prev => prev.map(p => p.id === id ? { ...p, name: newName, lastModified: Date.now() } : p));
         }}
-      />
-      <VisualAnalysisModal 
-        isOpen={isVisualAnalysisModalOpen} 
-        onClose={() => setIsVisualAnalysisModalOpen(false)} 
-        onSelectOption={async (option) => {
-          if (!activeProject) return;
-          const plainText = stripHtml(activeProject.writingText);
-          
-          if (option === 'mental_map') {
-            setIsMapModalOpen(true);
-          } else if (option === 'research_argument') {
-            setIsLoading(true);
-            const userMsg: ChatMessage = { id: `user-${Date.now()}`, role: 'user', content: "Generate a Toulmin Research Argument analysis." };
-            
-            try {
-              // Generate text and image in parallel
-              const [response, image] = await Promise.all([
-                generateResearchArgument(plainText),
-                generateVisualizationImage(plainText, 'research_argument')
-              ]);
-              
-              const modelMsg: ChatMessage = { id: `model-${Date.now()}`, role: 'model', content: response };
-              updateActiveProject({ chatHistory: [...activeProject.chatHistory, userMsg, modelMsg] });
-              
-              if (image) {
-                setVisualizationImage(image);
-                setIsVisualizationImageOpen(true);
-              }
-            } catch (error: any) {
-              console.error("Error generating visual analysis:", error);
-              const errorMsg: ChatMessage = { id: `model-${Date.now()}`, role: 'model', content: `I encountered an error while generating the visual analysis (${error.message || String(error)}). Please try again.`, isError: true };
-              updateActiveProject({ chatHistory: [...activeProject.chatHistory, userMsg, errorMsg] });
-            } finally {
-              setIsLoading(false);
-            }
-          } else if (option === 'semantic_map') {
-            setIsLoading(true);
-            const userMsg: ChatMessage = { id: `user-${Date.now()}`, role: 'user', content: "Generate a Semantic Map analysis." };
-            
-            try {
-              // Generate text and image in parallel
-              const [response, image] = await Promise.all([
-                generateSemanticMap(plainText),
-                generateVisualizationImage(plainText, 'semantic_map')
-              ]);
-              
-              const modelMsg: ChatMessage = { id: `model-${Date.now()}`, role: 'model', content: response };
-              updateActiveProject({ chatHistory: [...activeProject.chatHistory, userMsg, modelMsg] });
-              
-              if (image) {
-                setVisualizationImage(image);
-                setIsVisualizationImageOpen(true);
-              }
-            } catch (error: any) {
-              console.error("Error generating visual analysis:", error);
-              const errorMsg: ChatMessage = { id: `model-${Date.now()}`, role: 'model', content: `I encountered an error while generating the visual analysis (${error.message || String(error)}). Please try again.`, isError: true };
-              updateActiveProject({ chatHistory: [...activeProject.chatHistory, userMsg, errorMsg] });
-            } finally {
-              setIsLoading(false);
-            }
-          }
-          
-          if (plainText.trim()) {
-            const newSuggestions = await generateSuggestions(plainText);
-            setSuggestions(newSuggestions);
-          }
-        }} 
       />
 
       {isVisualizationImageOpen && visualizationImage && (

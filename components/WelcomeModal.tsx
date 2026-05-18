@@ -8,7 +8,7 @@ interface WelcomeModalProps {
 
 const slides = [
     {
-        title: "Welcome to SITE",
+        title: "Welcome to Inquiry Studio",
         text: "An AI-powered spatial companion designed to mentor you in academic writing. This is an instrument for thinking, a virtual-physical environment for learning."
     },
     {
@@ -17,7 +17,7 @@ const slides = [
     },
     {
         title: "Your Evolving Ideas",
-        text: "The main text area is your canvas. The SITE Companion helps you build, critique, and refine. Every interaction maps your research trajectory.\n\nBefore you start, consider some questions:\n\n• How can design challenge assumptions?\n• What unseen forces shape our built world?\n• Where does your inquiry lead?\n\nLet's begin."
+        text: "The main text area is your canvas. The Inquiry Studio Companion helps you build, critique, and refine. Every interaction maps your research trajectory.\n\nBefore you start, consider some questions:\n\n• How can design challenge assumptions?\n• What unseen forces shape our built world?\n• Where does your inquiry lead?\n\nLet's begin."
     }
 ];
 
