@@ -18,6 +18,19 @@ export interface ChatMessage {
   content: string;
   bookmarked?: boolean;
   isError?: boolean;
+  critiqueId?: string;
+  isRefusal?: boolean;
+  refusalReason?: string;
+  hasCitations?: boolean;
+}
+
+export interface Comment {
+  id: string;
+  text: string;
+  source: 'ai' | 'peer' | 'instructor' | 'self';
+  timestamp: number;
+  contextText: string;
+  resolved?: boolean;
 }
 
 export interface UploadedFile {
@@ -36,10 +49,32 @@ export interface ConceptNode {
     type: 'tension' | 'variable' | 'hypothesis' | 'evidence' | 'assumption' | 'user_selection' | 'ai_bookmark' | 'user_reference';
 }
 
-export interface ProjectVersion {
+export interface VersionEvent {
   id: string;
   timestamp: number;
   text: string;
+  label?: string;
+  trigger: 'manual' | 'pre-critique' | 'post-revision' | 'phase-transition';
+  linkedCritiqueId?: string;
+  addressedFeedbackItems?: string[];
+  rationale?: string;
+}
+
+export interface CritiqueItem {
+  id: string;
+  index: number;
+  text: string;
+  section?: string;
+  status?: 'addressed' | 'partially-addressed' | 'disagreed';
+}
+
+export interface CritiqueEvent {
+  id: string;
+  timestamp: number;
+  items: CritiqueItem[];
+  priorVersionId: string;
+  stage: string;
+  sliderValue: number;
 }
 
 export interface Project {
@@ -50,7 +85,12 @@ export interface Project {
   chatHistory: ChatMessage[];
   studentFiles: UploadedFile[];
   conceptMapNodes: ConceptNode[];
-  versions?: ProjectVersion[];
+  versions?: any[]; // legacy
+  versionEvents: VersionEvent[];
+  critiqueEvents: CritiqueEvent[];
+  comments?: Comment[];
+  sessionGoals?: { text: string; checklist: {id: string; text: string; completed: boolean;}[] };
+  expertiseLevel?: 'novice' | 'intermediate' | 'advanced';
 }
 
 export interface Researcher {

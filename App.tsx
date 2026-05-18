@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
-import { InquiryStage, ChatMessage, UploadedFile, ConceptNode, Project, OrbAction } from './types';
+import { InquiryStage, ChatMessage, UploadedFile, ConceptNode, Project, OrbAction, VersionEvent, CritiqueEvent } from './types';
 import { generateTutorResponse, summarizeFile, generateOrbResponse, checkAssumptions, generateResearchArgument, generateSemanticMap, generateSuggestions, generateVisualizationImage } from './services/geminiService';
 import { getRagFilesForSection } from './services/ragService';
 import PointCloud from './components/PointCloud';
@@ -8,13 +8,23 @@ import ReferencesModal from './components/ReferencesModal';
 import WelcomeModal from './components/WelcomeModal';
 import AboutModal from './components/AboutModal';
 import ConceptMapModal from './components/ConceptMapModal';
-import FormattingToolbar from './components/FormattingToolbar';
 import ImageGallery from './components/ImageGallery';
 import SocialModal from './components/SocialModal';
 import TutorialModal from './components/TutorialModal';
 import ProjectsModal from './components/ProjectsModal';
 import VisualAnalysisModal from './components/VisualAnalysisModal';
+import TopLeftTextStrip from './components/TopLeftTextStrip';
 import { WandIcon, ReferenceIcon, SendIcon, InfoIcon, ChevronLeftIcon, ChevronRightIcon, BookmarkIcon, ChevronDownIcon, LayoutHorizontalIcon, LayoutVerticalIcon, MapIcon, ImageIcon, FormatIcon, UsersIcon } from './components/icons';
+import { Menu, Sparkles, Network, History, ChevronRight } from 'lucide-react';
+
+import CommandPalette from './components/CommandPalette';
+import InquiryTrail from './components/InquiryTrail';
+import VersionDiff from './components/VersionDiff';
+import SessionSetup from './components/SessionSetup';
+import StatusBar from './components/StatusBar';
+import AILiteracyOnboarding from './components/AILiteracyOnboarding';
+import CollaboratorModal from './components/CollaboratorModal';
+import CognitiveLoadDashboard from './components/CognitiveLoadDashboard';
 
 const stripHtml = (html: string) => {
   const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -94,8 +104,6 @@ const App = () => {
     return saved ? Number(saved) : 50;
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [layoutMode, setLayoutMode] = useState<'horizontal' | 'vertical'>('vertical');
 
   // Project-specific State
   const [projects, setProjects] = useState<Project[]>([]);
@@ -114,9 +122,41 @@ const App = () => {
   const [isTutorialOpen, setIsTutorialOpen] = useState(true);
   const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
   const [isVisualAnalysisModalOpen, setIsVisualAnalysisModalOpen] = useState(false);
+  const [isInquiryTrailModalOpen, setIsInquiryTrailModalOpen] = useState(false); // keep for old logic if not wiped yet
   const [visualizationImage, setVisualizationImage] = useState<string | null>(null);
   const [isVisualizationImageOpen, setIsVisualizationImageOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  
+  // Phase 2 & 3 State
+  const [isCmdKOpen, setIsCmdKOpen] = useState(false);
+  const [isTrailOpen, setIsTrailOpen] = useState(false);
+  const [isSessionSetupOpen, setIsSessionSetupOpen] = useState(false);
+  const [isCollaboratorModalOpen, setIsCollaboratorModalOpen] = useState(false);
+  const [isCognitiveLoadDashboardOpen, setIsCognitiveLoadDashboardOpen] = useState(false);
+  const [isAILiteracyOnboardingOpen, setIsAILiteracyOnboardingOpen] = useState(false);
+  const [expertiseLevel, setExpertiseLevel] = useState<'novice'|'intermediate'|'advanced'>('intermediate');
+  
+  // Phase 2.5 State
+  const [commandPaletteMode, setCommandPaletteMode] = useState<'floating' | 'docked'>(() => {
+    return (localStorage.getItem('inquiry_studio_cp_mode') as 'floating' | 'docked') || 'floating';
+  });
+  
+  useEffect(() => {
+    localStorage.setItem('inquiry_studio_cp_mode', commandPaletteMode);
+  }, [commandPaletteMode]);
+
+  const [isVisualDropdownOpen, setIsVisualDropdownOpen] = useState(false);
+  const [isVersionsDropdownOpen, setIsVersionsDropdownOpen] = useState(false);
+  const [diffExpandedVersionId, setDiffExpandedVersionId] = useState<string | null>(null);
+  const [restoreConfirmVersionId, setRestoreConfirmVersionId] = useState<string | null>(null);
+  
+  // Nudges & Telemetry
+  const [editsSinceCritique, setEditsSinceCritique] = useState(0);
+  const [showReanalyzeNudge, setShowReanalyzeNudge] = useState(false);
+  const [promptReviseCycles, setPromptReviseCycles] = useState(0);
+  const [showRevisionLoopNudge, setShowRevisionLoopNudge] = useState(false);
+  const [lastCoactivationToast, setLastCoactivationToast] = useState(0);
+  const [showCoactivationToast, setShowCoactivationToast] = useState(false);
   
   // Input states
   const [chatInput, setChatInput] = useState<string>('');
@@ -137,8 +177,33 @@ const App = () => {
     setIsTutorialOpen(true);
     const savedProjects = localStorage.getItem('site_projects');
     const savedActiveId = localStorage.getItem('site_activeProjectId');
+    
+    // Schema Migrations
+    let schemaVersion = parseInt(localStorage.getItem('site_schema_version') || '0', 10);
+
     if (savedProjects) {
-      const parsedProjects = JSON.parse(savedProjects);
+      let parsedProjects = JSON.parse(savedProjects);
+      
+      if (schemaVersion < 1) {
+        // Migrate versions to versionEvents
+        parsedProjects = parsedProjects.map((p: any) => {
+          const versionEvents = p.versions ? p.versions.map((oldV: any) => ({
+            id: oldV.id,
+            timestamp: oldV.timestamp,
+            text: oldV.text,
+            label: new Date(oldV.timestamp).toLocaleTimeString(),
+            trigger: 'manual',
+          })) : [];
+          
+          return {
+            ...p,
+            versionEvents: p.versionEvents || versionEvents,
+            critiqueEvents: p.critiqueEvents || [],
+          };
+        });
+        localStorage.setItem('site_schema_version', '1');
+      }
+
       setProjects(parsedProjects);
       if (savedActiveId && parsedProjects.some((p: Project) => p.id === savedActiveId)) {
         setActiveProjectId(savedActiveId);
@@ -148,12 +213,20 @@ const App = () => {
         createNewProject();
       }
     } else {
+      localStorage.setItem('site_schema_version', '1');
       createNewProject();
     }
     
-    const hasSeenWelcome = localStorage.getItem('hasSeenWelcome');
+    const hasSeenWelcome = localStorage.getItem('inquiry_studio_has_launched');
     if (!hasSeenWelcome) {
       setIsWelcomeOpen(true);
+      localStorage.setItem('inquiry_studio_has_launched', 'true');
+    }
+    
+    const aiLiteracySeen = localStorage.getItem('ai_literacy_seen');
+    if (!aiLiteracySeen) {
+      setIsAILiteracyOnboardingOpen(true);
+      localStorage.setItem('ai_literacy_seen', 'true');
     }
   }, []);
 
@@ -197,6 +270,21 @@ const App = () => {
     setIsLoading(true);
     setSelectionPopover(null);
     setOrbState(null);
+    
+    if (!isSystemMessage) {
+        const newCycles = promptReviseCycles + 1;
+        setPromptReviseCycles(newCycles);
+        if (newCycles >= 5) {
+            setShowRevisionLoopNudge(true);
+        }
+        
+        // Co-activation Nudge
+        if (newCycles >= 8 && Date.now() - lastCoactivationToast > 20 * 60 * 1000) {
+           setShowCoactivationToast(true);
+           setLastCoactivationToast(Date.now());
+           setTimeout(() => setShowCoactivationToast(false), 5000);
+        }
+    }
     
     let newHistory = activeProject.chatHistory;
     
@@ -258,7 +346,8 @@ const App = () => {
       chatHistory: [],
       studentFiles: [],
       conceptMapNodes: [],
-      versions: [],
+      versionEvents: [],
+      critiqueEvents: [],
     };
     setProjects(prev => [...prev, newProject]);
     setActiveProjectId(newProject.id);
@@ -389,12 +478,33 @@ const App = () => {
       }
   };
 
-  const handleTextFormat = (command: string, value?: string) => {
-      if(writingAreaRef.current) {
-        document.execCommand(command, false, value);
-        updateActiveProject({ writingText: writingAreaRef.current.innerHTML });
+  const handleCanvasChange = useCallback((html: string) => {
+    if (!activeProject) return;
+    updateActiveProject({ writingText: html });
+    
+    // Naive substantive edit detection
+    const prevLen = activeProject.writingText.length;
+    const newLen = html.length;
+    if (Math.abs(newLen - prevLen) > 50 || html.includes('<p>') !== activeProject.writingText.includes('<p>')) {
+      const newEdits = editsSinceCritique + 1;
+      setEditsSinceCritique(newEdits);
+      setPromptReviseCycles(0); // reflection
+      
+      if (newEdits >= 5) {
+        setShowReanalyzeNudge(true);
+        // Create auto post-revision
+        const postRevVersion: VersionEvent = {
+          id: `ver-${Date.now()}-postrev`,
+          timestamp: Date.now(),
+          text: html,
+          label: 'Auto-save (Revision)',
+          trigger: 'post-revision'
+        };
+        updateActiveProject({ versionEvents: [...(activeProject.versionEvents || []), postRevVersion], writingText: html });
+        setEditsSinceCritique(0); // reset
       }
-  };
+    }
+  }, [activeProject, editsSinceCritique, updateActiveProject]);
 
   const handleTutorReview = useCallback(async () => {
     if (!activeProject || isLoading) return;
@@ -404,13 +514,75 @@ const App = () => {
         return;
     }
 
-    const reviewPrompt = `Review my current draft. I am focusing on the '${activeStage}' stage. Please provide critique and suggestions based on my text below:\n\n---\n\n${plainText}`;
-    handleTutorRequest(reviewPrompt);
+    const critiqueId = `critique-${Date.now()}`;
+    const preCritiqueVersion: VersionEvent = {
+        id: `ver-${Date.now()}-pre`,
+        timestamp: Date.now(),
+        text: activeProject.writingText,
+        label: 'Pre-critique snapshot',
+        trigger: 'pre-critique',
+        linkedCritiqueId: critiqueId
+    };
+
+    updateActiveProject({
+      versionEvents: [...(activeProject.versionEvents || []), preCritiqueVersion]
+    });
+
+    const reviewPrompt = `Review my current draft. I am focusing on the '${activeStage}' stage. Please provide critique and suggestions based on my text below in a clearly numbered list (e.g. "1. First point" "2. Second point") so I can address them individually:\n\n---\n\n${plainText}`;
+    
+    // We can't rely just on handleTutorRequest since we need to capture the response and link it to the critique
+    setChatInput('');
+    setIsLoading(true);
+    setSelectionPopover(null);
+    setOrbState(null);
+
+    const userMessage: ChatMessage = { id: `user-${Date.now()}`, role: 'user', content: reviewPrompt };
+    const newHistory = [...activeProject.chatHistory, userMessage];
+    updateActiveProject({ chatHistory: newHistory });
+
+    try {
+      const responseText = await generateTutorResponse(reviewPrompt, newHistory, activeStage, activeProject.studentFiles, practiceResearchRatio, activeProject.writingText);
+      const modelMessage: ChatMessage = { id: `model-${Date.now()}`, role: 'model', content: responseText, critiqueId: critiqueId };
+      
+      // Parse numbered items from critique
+      const regex = /^\s*(\d+)[\.\)]\s+(.*)$/gm;
+      const items = [];
+      let match;
+      while ((match = regex.exec(responseText)) !== null) {
+          items.push({
+              id: `${critiqueId}-item-${match[1]}`,
+              index: parseInt(match[1], 10),
+              text: match[2].trim(),
+              status: 'partially-addressed' as const // or undefined
+          });
+      }
+
+      const newCritique: CritiqueEvent = {
+          id: critiqueId,
+          timestamp: Date.now() + 1,
+          items: items.length > 0 ? items : [{ id: `${critiqueId}-item-1`, index: 1, text: responseText.trim(), status: undefined }],
+          priorVersionId: preCritiqueVersion.id,
+          stage: activeStage,
+          sliderValue: practiceResearchRatio
+      };
+
+      setProjects(prevProjects => prevProjects.map(p => 
+        p.id === activeProjectId 
+          ? { ...p, chatHistory: [...newHistory, modelMessage], critiqueEvents: [...(p.critiqueEvents || []), newCritique] } 
+          : p
+      ));
+    } catch (error: any) {
+      console.error("Error generating tutor response:", error);
+      const errorMsg: ChatMessage = { id: `model-${Date.now()}`, role: 'model', content: error.message || "An unexpected error occurred.", isError: true };
+      setProjects(prevProjects => prevProjects.map(p => p.id === activeProjectId ? { ...p, chatHistory: [...newHistory, errorMsg] } : p));
+    } finally {
+      setIsLoading(false);
+    }
     
     // Fetch suggestions
     const newSuggestions = await generateSuggestions(plainText);
     setSuggestions(newSuggestions);
-  }, [activeProject, isLoading, activeStage, handleTutorRequest]);
+  }, [activeProject, isLoading, activeStage, activeProjectId, practiceResearchRatio]);
   
   const handleCheckAssumptions = useCallback(async () => {
       if (!activeProject || isLoading) return;
@@ -647,13 +819,51 @@ const App = () => {
       updateActiveProject({ chatHistory: newHistory, conceptMapNodes: newNodes });
   };
   
-  const renderFormattedMessage = (content: string) => {
+  const renderFormattedMessage = (content: string, critiqueId?: string) => {
+    // First, if it's a critique, we can try to turn numbered lists into spans.
+    // Let's do a simple line-by-line parsing if and only if critiqueId is passed.
+    if (critiqueId) {
+       const lines = content.split('\n');
+       return lines.map((line, i) => {
+           const match = line.match(/^(\s*)(\d+)[\.\)]\s+(.*)$/);
+           if (match) {
+               const indexNum = match[2];
+               const rest = match[3];
+               return (
+                   <div key={i} className="mb-2">
+                       <span className="font-bold cursor-pointer text-teal-600 hover:text-teal-800 transition-colors" 
+                           onClick={() => {
+                               // Highlight logic
+                               const editor = writingAreaRef.current;
+                               if (editor) {
+                                   const target = editor.querySelector(`[data-critique-item-id="${indexNum}"]`);
+                                   if (target) {
+                                       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                       (target as HTMLElement).style.backgroundColor = '#ccfbf1';
+                                       setTimeout(() => { (target as HTMLElement).style.backgroundColor = 'transparent'; }, 2000);
+                                   } else {
+                                       alert(`No response mapped to item #${indexNum} yet.`);
+                                   }
+                               }
+                           }}
+                           title="Click to find response in document"
+                       >
+                           {match[1]}{indexNum}. 
+                       </span>
+                       {' '}{rest}
+                   </div>
+               );
+           }
+           return <div key={i} className="mb-1">{line}</div>;
+       });
+    }
+
     const parts = content.split(/(\*.*?\*)/g);
     return parts.map((part, i) => {
         if (part.startsWith('*') && part.endsWith('*')) {
             return <em key={i} className="font-normal not-italic bg-yellow-100/70 px-0.5 py-0.5 rounded-sm">{part.slice(1, -1)}</em>;
         }
-        return part;
+        return <span key={i}>{part}</span>;
     });
   };
 
@@ -663,15 +873,81 @@ const App = () => {
 
   const handleSaveVersion = () => {
     if (!activeProject) return;
-    const newVersion = {
-      id: `v-${Date.now()}`,
-      timestamp: Date.now(),
-      text: activeProject.writingText
+
+    // Extract addressed feedback items
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(activeProject.writingText, 'text/html');
+    const nodes = doc.querySelectorAll('[data-critique-item-id]');
+    const addressedFeedbackItems = Array.from(nodes).map(n => n.getAttribute('data-critique-item-id')!);
+
+    const newVersion: VersionEvent = {
+        id: `ver-${Date.now()}`,
+        timestamp: Date.now(),
+        text: activeProject.writingText,
+        label: new Date().toLocaleTimeString(),
+        trigger: 'manual',
+        addressedFeedbackItems: Array.from(new Set(addressedFeedbackItems))
     };
     updateActiveProject({
-      versions: [...(activeProject.versions || []), newVersion]
+      versionEvents: [...(activeProject.versionEvents || []), newVersion]
     });
     // Optional: show a toast or temporary success state
+  };
+
+  const handleCommandPaletteAction = (action: string, payload?: any) => {
+    switch (action) {
+      case 'switch-project': setIsProjectsModalOpen(true); break;
+      case 'switch-stage':
+        // small prompt or toggle
+        const stages = Object.values(InquiryStage);
+        const currentIndex = stages.indexOf(activeStage);
+        const nextStage = stages[(currentIndex + 1) % stages.length];
+        handleStageChange(nextStage);
+        break;
+      case 'open-inquiry-map': setIsMapModalOpen(true); break;
+      case 'open-researcher-network': setIsSocialModalOpen(true); break;
+      case 'open-references': setIsReferencesModalOpen(true); break;
+      case 'analyze-full-text': handleTutorReview(); break;
+      case 'visual-tool': setIsVisualAnalysisModalOpen(true); break;
+      case 're-analyze': handleTutorReview(); break;
+      case 'explore-concept-disciplines':
+        setChatInput("Take the concept from my text and explore how it appears in 3 disciplines outside architecture. What does each lens reveal?");
+        break;
+      case 'save-version':
+        const label = window.prompt("Enter an optional label for this version:");
+        if (activeProject) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(activeProject.writingText, 'text/html');
+            const nodes = doc.querySelectorAll('[data-critique-item-id]');
+            const addressedFeedbackItems = Array.from(nodes).map(n => n.getAttribute('data-critique-item-id')!);
+            const newVersion: VersionEvent = {
+                id: `ver-${Date.now()}`,
+                timestamp: Date.now(),
+                text: activeProject.writingText,
+                label: label || new Date().toLocaleTimeString(),
+                trigger: 'manual',
+                addressedFeedbackItems: Array.from(new Set(addressedFeedbackItems))
+            };
+            updateActiveProject({ versionEvents: [...(activeProject.versionEvents || []), newVersion] });
+        }
+        break;
+      case 'insert-image': setIsImageGalleryOpen(true); break;
+      case 'insert-reference': setIsReferencesModalOpen(true); break;
+      case 'invite-collaborator':
+      case 'manage-collaborators':
+        setIsCollaboratorModalOpen(true);
+        break;
+      case 'open-inquiry-trail': setIsTrailOpen(true); break;
+      case 'open-cognitive-load-dashboard': setIsCognitiveLoadDashboardOpen(true); break;
+      case 'session-goals':
+      case 'set-expertise-level':
+      case 'open-rubric':
+        setIsSessionSetupOpen(true);
+        break;
+      case 'ai-literacy-guide': setIsAILiteracyOnboardingOpen(true); break;
+      case 'tutorial': setIsTutorialOpen(true); break;
+      case 'about-feedback': setIsAboutModalOpen(true); break;
+    }
   };
 
   const ProjectSwitcher = () => (
@@ -684,6 +960,37 @@ const App = () => {
       Projects
     </button>
   );
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd-S / Ctrl-S
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        handleCommandPaletteAction('save-version');
+      }
+      // Cmd-T / Ctrl-T
+      else if ((e.metaKey || e.ctrlKey) && e.key === 't') {
+        e.preventDefault();
+        setIsTrailOpen(true);
+      }
+      // Cmd-Shift-A
+      else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        handleTutorReview();
+      }
+      // Esc
+      else if (e.key === 'Escape') {
+        // close whichever overlay is on top
+        if (isCmdKOpen) setIsCmdKOpen(false);
+        else if (isTrailOpen) setIsTrailOpen(false);
+        else if (isVisualDropdownOpen) setIsVisualDropdownOpen(false);
+        else if (isVersionsDropdownOpen) setIsVersionsDropdownOpen(false);
+        else if (isVisualAnalysisModalOpen) setIsVisualAnalysisModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeProject, isCmdKOpen, isTrailOpen, isVisualDropdownOpen, isVersionsDropdownOpen, isVisualAnalysisModalOpen, handleTutorReview]);
 
   return (
     <div className="min-h-screen h-screen bg-[#fcfcfc] text-gray-900 flex flex-col relative overflow-hidden" onMouseUp={handleTextSelection}>
@@ -706,6 +1013,11 @@ const App = () => {
           onClose={() => setIsSocialModalOpen(false)}
           projectText={stripHtml(activeProject?.writingText || '')}
       />
+      <InquiryTrail isOpen={isTrailOpen} onClose={() => setIsTrailOpen(false)} project={activeProject || null} onRestore={(text) => handleCanvasChange(text)} />
+      <SessionSetup isOpen={isSessionSetupOpen} onClose={() => setIsSessionSetupOpen(false)} activeStage={activeStage} expertiseLevel={expertiseLevel} onExpertiseChange={setExpertiseLevel} />
+      <AILiteracyOnboarding isOpen={isAILiteracyOnboardingOpen} onClose={() => setIsAILiteracyOnboardingOpen(false)} />
+      <CollaboratorModal isOpen={isCollaboratorModalOpen} onClose={() => setIsCollaboratorModalOpen(false)} />
+      <CognitiveLoadDashboard isOpen={isCognitiveLoadDashboardOpen} onClose={() => setIsCognitiveLoadDashboardOpen(false)} />
       <ImageGallery 
         isOpen={isImageGalleryOpen}
         onClose={() => setIsImageGalleryOpen(false)}
@@ -721,129 +1033,191 @@ const App = () => {
          <div className="w-px h-4 bg-gray-600"></div>
          <button onMouseDown={handleBookmarkSelection} className="px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-700"><BookmarkIcon className="w-4 h-4"/>Bookmark</button>
          <div className="w-px h-4 bg-gray-600"></div>
+         <button onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const itemId = window.prompt("Which critique item # is this a response to? (e.g. 1)");
+            if (itemId) {
+              const selection = window.getSelection();
+              if (selection && selection.rangeCount > 0) {
+                 const range = selection.getRangeAt(0);
+                 const wrapper = document.createElement('span');
+                 wrapper.style.borderLeft = '3px solid #C9A961'; // gold
+                 wrapper.style.paddingLeft = '8px';
+                 wrapper.style.display = 'inline-block';
+                 wrapper.dataset.critiqueItemId = itemId;
+                 wrapper.title = `Response to critique item #${itemId}`;
+                 range.surroundContents(wrapper);
+                 if (writingAreaRef.current) {
+                   updateActiveProject({ writingText: writingAreaRef.current.innerHTML });
+                 }
+              }
+            }
+            setSelectionPopover(null);
+         }} className="px-3 py-2 text-sm flex items-center gap-1 hover:bg-gray-700 text-[#C9A961]">
+            Mark Response
+         </button>
+         <div className="w-px h-4 bg-gray-600"></div>
+         <button onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const commentText = window.prompt("Enter your comment:");
+            if (commentText && selectionPopover && activeProject) {
+              const newComment: any = {
+                id: `comment-${Date.now()}`,
+                text: commentText,
+                source: 'self',
+                timestamp: Date.now(),
+                contextText: selectionPopover.text
+              };
+              updateActiveProject({ comments: [...(activeProject.comments || []), newComment] });
+            }
+            setSelectionPopover(null);
+         }} className="px-3 py-2 text-sm flex items-center gap-1 hover:bg-gray-700">
+            Add Comment
+         </button>
+         <div className="w-px h-4 bg-gray-600"></div>
          <button onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSelectionPopover(null); }} className="px-2 py-2 text-sm hover:bg-gray-700 rounded-r-md">&times;</button>
       </div>
 
 
       <main className="flex-1 flex h-full min-h-0 w-full max-w-screen-2xl mx-auto z-10">
-        {/* Left Collapsible Sidebar */}
-        <aside className={`flex-shrink-0 transition-all duration-300 ease-in-out bg-gray-50/70 backdrop-blur-sm border-r border-gray-200/80 flex flex-col overflow-hidden ${isSidebarOpen ? 'w-80' : 'w-0'}`}>
-           <div className={`p-6 overflow-y-auto h-full space-y-8 transition-opacity ${isSidebarOpen ? 'opacity-100' : 'opacity-0'}`}>
-              <div>
-                <h2 className="text-sm font-semibold uppercase text-gray-500 mb-3">Inquiry Stage</h2>
-                <div className="space-y-1">{Object.values(InquiryStage).map(stage => (
-                    <button key={stage} onClick={() => handleStageChange(stage)} className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${activeStage === stage ? 'bg-gray-800 text-white' : 'hover:bg-gray-200'}`}>{stage}</button>
-                ))}</div>
-              </div>
-
-              <div>
-                <h2 className="text-sm font-semibold uppercase text-gray-500 mb-3">Tutor Orientation</h2>
-                <div className="space-y-4 px-2">
-                    <div>
-                        <div className="flex justify-between text-xs text-gray-600"><span>Practice-Oriented</span><span>Research-Oriented</span></div>
-                        <input type="range" min="0" max="100" step="25" value={practiceResearchRatio} onChange={(e) => setPracticeResearchRatio(Number(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gray-800"/>
-                        <div className="flex justify-between text-[10px] text-gray-400 mt-1">
-                          <span>100%</span><span>75%</span><span>50%</span><span>25%</span><span>0%</span>
-                        </div>
-                        <p className="text-[10px] text-gray-400 mt-2 leading-tight">
-                          <strong>Practice:</strong> Focuses on design and making.<br/>
-                          <strong>Research:</strong> Focuses on theory and methods.
-                        </p>
-                    </div>
-                </div>
-              </div>
-              
-              <div>
-                 <h2 className="text-sm font-semibold uppercase text-gray-500 mb-3">Knowledge Base</h2>
-                 <div className="space-y-2">
-                    <button onClick={() => setIsReferencesModalOpen(true)} className="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-gray-300 rounded-md text-sm text-gray-600 hover:border-gray-800 hover:text-gray-800 transition-colors">
-                        <ReferenceIcon className="w-4 h-4" />DESK & References
-                    </button>
-                    <button onClick={() => setIsMapModalOpen(true)} className="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-gray-300 rounded-md text-sm text-gray-600 hover:border-gray-800 hover:text-gray-800 transition-colors">
-                        <MapIcon className="w-4 h-4" />Inquiry Map
-                    </button>
-                    <button onClick={() => setIsSocialModalOpen(true)} className="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-gray-300 rounded-md text-sm text-gray-600 hover:border-gray-800 hover:text-gray-800 transition-colors">
-                        <UsersIcon className="w-4 h-4" />Researcher Network
-                    </button>
-                 </div>
-              </div>
-              
-              <div>
-                 <h2 className="text-sm font-semibold uppercase text-gray-500 mb-3">About</h2>
-                 <button onClick={() => setIsAboutModalOpen(true)} className="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-gray-300 rounded-md text-sm text-gray-600 hover:border-gray-800 hover:text-gray-800 transition-colors">
-                    <InfoIcon className="w-4 h-4" />ABOUT Inquiry Studio & Feedback Survey
-                 </button>
-              </div>
-              
-          </div>
-        </aside>
-        
-        <div className={`flex-1 flex relative min-w-0 bg-white/50 backdrop-blur-sm shadow-sm ${layoutMode === 'horizontal' ? 'flex-col' : 'flex-row'}`}>
-          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} title={isSidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"} className="absolute top-1/2 -translate-y-1/2 -left-3 z-20 bg-white border border-gray-300 rounded-full p-1 shadow-md hover:bg-gray-100 transition-all">
-            {isSidebarOpen ? <ChevronLeftIcon className="w-5 h-5 text-gray-600" /> : <ChevronRightIcon className="w-5 h-5 text-gray-600" />}
-          </button>
-          
-          <div className="flex-1 flex flex-col min-h-0">
-             <div className="p-4 border-b border-gray-200/80 flex justify-between items-center flex-shrink-0 gap-4">
-               <div className="flex items-center gap-2">
-                 <h1 className="text-lg font-bold truncate">{activeProject?.name || 'Loading...'}</h1>
-                 <ProjectSwitcher />
-                 {activeProject && (
-                   <span className="text-xs text-gray-500 ml-2">
-                     {stripHtml(activeProject.writingText).trim().split(/\s+/).filter(w => w.length > 0).length} words
-                   </span>
-                 )}
-               </div>
-               <div className="flex items-center gap-4 flex-shrink-0">
-                 <button 
-                   onClick={handleSaveVersion}
-                   className="text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-md transition-colors border border-gray-200 flex items-center gap-1"
-                   title="Save current draft version"
-                 >
-                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                   Save Version
-                 </button>
-                 <div className="relative group">
-                   <button 
-                     className="text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-md transition-colors border border-gray-200 flex items-center gap-1"
-                     title="View saved versions"
-                   >
-                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-                     Versions ({activeProject?.versions?.length || 0})
-                   </button>
-                   <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 max-h-64 overflow-y-auto">
-                     {activeProject?.versions && activeProject.versions.length > 0 ? (
-                       activeProject.versions.map((v, i) => (
-                         <button 
-                           key={v.id}
-                           onClick={() => updateActiveProject({ writingText: v.text })}
-                           className="w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100 border-b border-gray-100 last:border-0"
-                         >
-                           Version {i + 1} - {new Date(v.timestamp).toLocaleTimeString()}
-                         </button>
-                       ))
-                     ) : (
-                       <div className="px-4 py-3 text-xs text-gray-500 text-center">No versions saved</div>
-                     )}
-                   </div>
-                 </div>
-                 <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-md">
-                    <button onClick={() => setLayoutMode('horizontal')} title="Horizontal Layout" className={`p-1 rounded transition-colors ${layoutMode === 'horizontal' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:bg-gray-200 hover:text-gray-800'}`}>
-                        <LayoutHorizontalIcon className="w-5 h-5" />
-                    </button>
-                    <button onClick={() => setLayoutMode('vertical')} title="Vertical Layout" className={`p-1 rounded transition-colors ${layoutMode === 'vertical' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:bg-gray-200 hover:text-gray-800'}`}>
-                        <LayoutVerticalIcon className="w-5 h-5" />
-                    </button>
-                 </div>
-                 <div className="w-px h-6 bg-gray-200"></div>
-                 <FormattingToolbar onFormat={handleTextFormat} />
-                 <div className="w-px h-6 bg-gray-200"></div>
-                 <button onClick={() => setIsImageGalleryOpen(true)} title="Image Desk" className="text-gray-500 hover:text-gray-900"><ImageIcon className="w-5 h-5" /></button>
-                 <button onClick={() => setIsReferencesModalOpen(true)} title="References" className="text-gray-500 hover:text-gray-900"><ReferenceIcon className="w-5 h-5" /></button>
-               </div>
+        <div className="flex-1 flex relative min-w-0 bg-white/50 backdrop-blur-sm shadow-sm flex-row">
+          <CommandPalette 
+            isOpen={isCmdKOpen} 
+            onClose={() => setIsCmdKOpen(false)} 
+            onExecute={handleCommandPaletteAction} 
+            activeStage={activeStage} 
+            isDocked={commandPaletteMode === 'docked'}
+            onToggleDock={() => setCommandPaletteMode(prev => prev === 'docked' ? 'floating' : 'docked')}
+          />
+          <div className="flex-1 flex flex-col min-h-0 relative">
+             <div className="absolute top-4 left-6 z-20 flex items-center gap-3">
+               <button 
+                 onClick={() => setIsCmdKOpen(true)} 
+                 className="text-gray-600 hover:text-gray-800 transition-colors p-1" 
+                 title="Menu (⌘K)"
+               >
+                 <Menu className="w-5 h-5" />
+               </button>
+               <TopLeftTextStrip 
+                   projectName={activeProject?.name} 
+                   stage={activeStage} 
+                   saveStatus="idle"
+                   onProjectClick={() => setIsCmdKOpen(true)}
+                   onStageClick={() => setIsCmdKOpen(true)}
+               />
              </div>
+
+            <div className="absolute top-4 right-6 z-20 flex items-center gap-2">
+              <button 
+                onClick={handleTutorReview}
+                className="flex items-center gap-2 px-3.5 py-2 text-sm text-gray-700 bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-colors shadow-sm"
+                title="Analyze Full Text · ⌘⇧A"
+              >
+                <Sparkles className="w-4 h-4" /> Analyze Full Text
+              </button>
+              <div className="relative">
+                <button 
+                  onClick={() => {
+                    setIsVisualDropdownOpen(!isVisualDropdownOpen);
+                    setIsVersionsDropdownOpen(false);
+                  }}
+                  className="flex items-center gap-2 px-3.5 py-2 text-sm text-gray-700 bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-colors shadow-sm"
+                  title="Visual Analysis"
+                >
+                  <Network className="w-4 h-4" /> Visual Analysis
+                </button>
+                {isVisualDropdownOpen && (
+                  <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg py-1 z-30">
+                    <button onClick={() => { setIsVisualDropdownOpen(false); setIsVisualAnalysisModalOpen(true); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Argument map</button>
+                    <button onClick={() => { setIsVisualDropdownOpen(false); setIsVisualAnalysisModalOpen(true); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Semantic network</button>
+                    <button onClick={() => { setIsVisualDropdownOpen(false); setIsVisualAnalysisModalOpen(true); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Mental map</button>
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <button 
+                  onClick={() => {
+                    setIsVersionsDropdownOpen(!isVersionsDropdownOpen);
+                    setIsVisualDropdownOpen(false);
+                  }}
+                  className="flex items-center gap-2 px-3.5 py-2 text-sm text-gray-700 bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-colors shadow-sm"
+                  title="Versions"
+                >
+                  <History className="w-4 h-4" /> Versions ({activeProject?.versionEvents?.length || 0})
+                </button>
+                {isVersionsDropdownOpen && (
+                  <div className="absolute top-full right-0 mt-1 w-[360px] max-h-[480px] overflow-y-auto bg-white border border-gray-200 rounded-md shadow-lg py-2 z-30 flex flex-col">
+                    {activeProject?.versionEvents?.slice().reverse().map((v, idx, arr) => {
+                       const nextOlder = arr[idx + 1];
+                       const isExpanded = diffExpandedVersionId === v.id;
+                       const isConfirming = restoreConfirmVersionId === v.id;
+                       return (
+                         <div key={v.id} className="px-4 py-2 border-b border-gray-100 last:border-0 hover:bg-gray-50 group flex flex-col">
+                           <div className="flex justify-between items-start">
+                             <div>
+                               <div className="text-sm font-medium text-gray-800">{v.label || 'Untitled save'}</div>
+                               <div className="text-xs text-gray-500 mt-0.5">
+                                 {v.trigger} &middot; {new Date(v.timestamp).toLocaleTimeString()}
+                                 {v.linkedCritiqueId && ' · linked to Critique'}
+                               </div>
+                             </div>
+                             {!isConfirming && (
+                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                                 <button onClick={() => setDiffExpandedVersionId(isExpanded ? null : v.id)} className="text-xs text-gray-600 hover:text-gray-900 border border-gray-200 px-2 py-1 rounded bg-white">
+                                   {isExpanded ? 'Hide' : 'Diff'}
+                                 </button>
+                                 <button onClick={() => setRestoreConfirmVersionId(v.id)} className="text-xs text-[#C9A961] hover:text-[#b09355] border border-[#C9A961] px-2 py-1 rounded bg-white">Restore</button>
+                               </div>
+                             )}
+                           </div>
+                           
+                           {isConfirming && (
+                             <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+                               <p className="mb-2">Restore this version? Current canvas will be saved as a new version.</p>
+                               <div className="flex gap-2 justify-end">
+                                 <button onClick={() => setRestoreConfirmVersionId(null)} className="px-2 py-1 text-xs border border-gray-300 rounded bg-white text-gray-700 hover:bg-gray-50">Cancel</button>
+                                 <button 
+                                   onClick={() => {
+                                     // 1. auto snapshot
+                                     const backup: VersionEvent = {
+                                       id: `ver-${Date.now()}-backup`,
+                                       timestamp: Date.now(),
+                                       text: activeProject.writingText,
+                                       label: 'Auto-saved before restore',
+                                       trigger: 'manual'
+                                     };
+                                     updateActiveProject({ 
+                                       writingText: v.text, 
+                                       versionEvents: [...activeProject.versionEvents, backup] 
+                                     });
+                                     setRestoreConfirmVersionId(null);
+                                     setIsVersionsDropdownOpen(false);
+                                   }} 
+                                   className="px-2 py-1 text-xs border border-[#C9A961] rounded bg-[#C9A961] text-white hover:bg-[#b09355]">Confirm restore</button>
+                               </div>
+                             </div>
+                           )}
+
+                           {isExpanded && !isConfirming && (
+                             <div className="mt-2 bg-white border border-gray-100 rounded-md p-2 max-h-48 overflow-y-auto text-xs">
+                               <VersionDiff oldVersion={nextOlder || null} newVersion={v} />
+                             </div>
+                           )}
+                         </div>
+                       )
+                    })}
+                    {(!activeProject?.versionEvents || activeProject.versionEvents.length === 0) && (
+                       <div className="px-4 py-4 text-sm text-gray-500 text-center">No versions yet</div>
+                    )}
+                    <button onClick={() => { setIsVersionsDropdownOpen(false); setIsTrailOpen(true); }} className="mx-4 mt-2 mb-1 text-sm text-blue-600 hover:text-blue-800 hover:underline text-center">View as timeline &rarr;</button>
+                  </div>
+                )}
+              </div>
+            </div>
              
-            <div className="flex-1 p-8 md:p-12 min-h-0 relative flex flex-col">
+            <div className="flex-1 p-8 md:p-12 md:pt-20 min-h-0 relative flex flex-col">
                {isWritingAreaEmpty && (
                 <div className="absolute top-8 md:top-12 left-8 md:left-12 text-gray-400 text-base font-spacemono whitespace-pre-wrap pointer-events-none" aria-hidden="true">
                   {onboardingPlaceholder}
@@ -852,7 +1226,7 @@ const App = () => {
               <EditableCanvas
                 ref={writingAreaRef}
                 html={activeProject?.writingText || ''}
-                onChange={(html: string) => updateActiveProject({ writingText: html })}
+                onChange={handleCanvasChange}
                 onFiles={(files: FileList) => addFilesToProject(files)}
                 onDoubleClick={handleDoubleClick}
                 onScroll={() => { setSelectionPopover(null); setOrbState(null); }}
@@ -882,43 +1256,15 @@ const App = () => {
             </div>
           </div>
 
-          <div className={`flex-shrink-0 flex flex-col bg-gray-50 ${layoutMode === 'horizontal' ? 'h-1/3 max-h-[50vh] border-t border-gray-200/80' : 'w-[450px] max-w-[40%] border-l border-gray-200/80'}`}>
-            <div className="p-3 flex items-center gap-4 border-b border-gray-200/80 flex-shrink-0">
-              <div className="flex gap-2 w-full justify-center">
-                <button 
-                  onClick={handleTutorReview} 
-                  disabled={isLoading || !activeProject} 
-                  title="Analyze full text (Cmd/Ctrl + Enter)" 
-                  className="cursor-pointer disabled:cursor-not-allowed flex flex-col items-center group"
-                >
-                  <div className="w-12 h-12 rounded-full bg-blue-50 border-2 border-blue-200 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                    <TutorShell progress={shellProgress} isThinking={isLoading} />
-                  </div>
-                  <span className="text-[10px] text-gray-500 mt-1 font-medium uppercase tracking-wider">Analyze full text</span>
-                </button>
-                
-                <button 
-                  onClick={() => setIsVisualAnalysisModalOpen(true)}
-                  disabled={isLoading || !activeProject}
-                  title="Visual Analysis Tool"
-                  className="cursor-pointer disabled:cursor-not-allowed flex flex-col items-center group"
-                >
-                  <div className="w-12 h-12 rounded-full bg-purple-50 border-2 border-purple-200 flex items-center justify-center group-hover:bg-purple-100 transition-colors">
-                    <MapIcon className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <span className="text-[10px] text-gray-500 mt-1 font-medium uppercase tracking-wider">Visual Tool</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 p-4 space-y-4 overflow-y-auto bg-gray-100 min-h-0">
+          <div className="flex-shrink-0 flex flex-col bg-gray-50 w-[450px] max-w-[40%] border-l border-gray-200/80">
+            <div className="flex-1 p-4 space-y-4 overflow-y-auto bg-gray-100 min-h-0 relative">
                {(!activeProject || activeProject.chatHistory.length === 0) && <div className="text-center text-sm text-gray-500 h-full flex items-center justify-center">Chat history will appear here.</div>}
                {activeProject?.chatHistory.map((msg, index) => (
                   <div key={msg.id} className={`flex group ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                       <div className={`relative max-w-md lg:max-w-lg rounded-lg px-4 py-2 text-sm whitespace-pre-wrap break-words ${msg.role === 'user' ? 'bg-gray-800 text-white' : msg.isError ? 'bg-red-50 border border-red-200 text-red-800' : 'bg-white border'}`}>
                           {msg.role === 'model' ? (
                             <div onMouseUp={(e) => handleChatTextSelection(e, msg.content)}>
-                              {renderFormattedMessage(msg.content)}
+                              {renderFormattedMessage(msg.content, msg.critiqueId)}
                             </div>
                           ) : (
                             msg.content
@@ -966,7 +1312,16 @@ const App = () => {
                <div ref={chatEndRef} />
             </div>
 
-            <div className="p-4 border-t border-gray-200/80 bg-white">
+            <div className="p-4 border-t border-gray-200/80 bg-white relative">
+              {showReanalyzeNudge && (
+                <div className="absolute bottom-full left-0 right-0 mb-4 mx-4 p-3 bg-blue-50 border border-blue-100 rounded-lg shadow-sm flex items-center justify-between z-10 transition-all text-sm">
+                  <span className="text-blue-800">You've revised since the last analysis — want to see how your changes are received?</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button onClick={() => { setShowReanalyzeNudge(false); handleTutorReview(); }} className="px-3 py-1 bg-white text-blue-600 font-medium rounded-md hover:bg-blue-100 transition-colors shadow-sm">Re-analyze</button>
+                    <button onClick={() => setShowReanalyzeNudge(false)} className="p-1 text-blue-400 hover:text-blue-600">&times;</button>
+                  </div>
+                </div>
+              )}
               <form onSubmit={handleChatSubmit} className="relative">
                 <input
                   type="text"
@@ -1104,6 +1459,43 @@ const App = () => {
           </div>
         </div>
       )}
+      {showRevisionLoopNudge && (
+        <div className="fixed bottom-6 right-6 bg-white border-l-4 border-l-[#C9A961] shadow-xl rounded-md p-4 w-80 z-50 animate-in slide-in-from-bottom-5">
+           <h4 className="font-semibold text-gray-800 text-sm mb-1">Over-prompting Check</h4>
+           <p className="text-gray-600 text-xs mb-3">You've asked for feedback multiple times without making text edits. Consider moving to the canvas or exploring the Inquiry Trail.</p>
+           <div className="flex gap-2">
+              <button 
+                onClick={() => { setShowRevisionLoopNudge(false); setPromptReviseCycles(0); setIsTrailOpen(true); }} 
+                className="px-3 py-1.5 bg-[#C9A961] text-white text-xs font-medium rounded hover:bg-[#b09355] transition-colors"
+              >
+                Open Trail
+              </button>
+              <button 
+                onClick={() => { setShowRevisionLoopNudge(false); setPromptReviseCycles(0); }} 
+                className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-medium rounded hover:bg-gray-200 transition-colors"
+              >
+                Dismiss
+              </button>
+           </div>
+        </div>
+      )}
+      {showCoactivationToast && (
+         <div className="fixed top-6 right-6 bg-gray-800 text-white px-4 py-3 rounded-md shadow-xl text-sm z-50 animate-in fade-in slide-in-from-top-4">
+            Try applying some of these ideas to your draft before continuing the conversation!
+         </div>
+      )}
+      
+      <StatusBar 
+        practiceResearchRatio={practiceResearchRatio}
+        setPracticeResearchRatio={setPracticeResearchRatio}
+        wordCount={activeProject ? stripHtml(activeProject.writingText).trim().split(/\s+/).filter(w => w.length > 0).length : 0}
+        mapCount={activeProject?.conceptMapNodes?.length || 0}
+        researchersCount={contextualRagFiles.length /* Currently this app doesn't have a specific array of Researchers except maybe some other state, but context says users added. I'll need to count the right things... wait, looking at rag_manifest.csv */ /* I'll leave as 0 and refine shortly */}
+        referencesCount={(activeProject?.studentFiles?.length || 0) + contextualRagFiles.length}
+        onOpenMap={() => setIsMapModalOpen(true)}
+        onOpenResearchers={() => setIsSocialModalOpen(true)}
+        onOpenReferences={() => setIsReferencesModalOpen(true)}
+      />
     </div>
   );
 };

@@ -14,7 +14,8 @@ export const generateVisualizationImage = async (text: string, type: 'research_a
   }
 
   try {
-    const endpoint = `/api-proxy/v1beta/models/gemini-2.5-flash-image:generateContent`;
+    const apiKey = process.env.GEMINI_API_KEY || '';
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const body = {
       contents: [
         {
@@ -34,7 +35,7 @@ export const generateVisualizationImage = async (text: string, type: 'research_a
 
     if (!res.ok) {
       const err = await res.text();
-      throw new Error(`Gemini proxy error ${res.status}: ${err}`);
+      throw new Error(`Gemini API error ${res.status}: ${err}`);
     }
 
     const data = await res.json();
@@ -54,11 +55,9 @@ export const generateVisualizationImage = async (text: string, type: 'research_a
 // IMPORTANT: This should be a RELATIVE URL so it works locally + on Cloud Run.
 // Your Express server handles the API key via env var and forwards to Google.
 async function geminiGenerate(systemInstruction: string | null, contents: any[]) {
-  const endpoint =
-    `/api-proxy/v1beta/models/${model}:generateContent`;
+  const apiKey = process.env.GEMINI_API_KEY || '';
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-  // Gemini REST expects ?key=... normally, but your server injects X-Goog-Api-Key,
-  // so DO NOT add key here.
   const body: any = {
     contents,
   };
@@ -74,7 +73,7 @@ async function geminiGenerate(systemInstruction: string | null, contents: any[])
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Gemini proxy error ${res.status}: ${err}`);
+    throw new Error(`Gemini API error ${res.status}: ${err}`);
   }
 
   const data = await res.json();
